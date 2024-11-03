@@ -9,6 +9,10 @@
         "boot.h": "c",
         "pgmspace.h": "c",
         "string.h": "c",
-        "iom32.h": "c"
+        "iom32.h": "c",
+        "iom644.h": "c",
+        "iousb1286.h": "c",
+        "iomxx4.h": "c",
+        "stdio.h": "c"
     }
 }

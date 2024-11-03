@@ -4,21 +4,11 @@
  * SPI
  */
 
-uint8_t enc28j60_current_bank = 0;
-uint16_t enc28j60_rxrdpt = 0;
+uint8_t enc28j60_current_bank[2] = {0, 0};
+uint16_t enc28j60_rxrdpt[2] = {0, 0};
 
 #define enc28j60_select(cs) ENC28J60_SPI_PORT &= ~(1<<cs)
 #define enc28j60_release(cs) ENC28J60_SPI_PORT |= (1<<cs)
-
-static int writeSerial(char* str)
-{
-	for(; *str; str++)
-	{
-		while(!(UCSRA&(1<<UDRE))){};
-		UDR = *str;
-	}
-	return 0;
-}
 
 uint8_t enc28j60_rxtx(uint8_t data)
 {
@@ -61,7 +51,7 @@ void enc28j60_soft_reset(uint8_t cs)
 	enc28j60_tx(ENC28J60_SPI_SC);
 	enc28j60_release(cs);
 	
-	enc28j60_current_bank = 0;
+	enc28j60_current_bank[cs-1] = 0;
 	_delay_ms(1); // Wait until device initializes
 }
 
@@ -78,11 +68,11 @@ void enc28j60_set_bank(uint8_t cs, uint8_t adr)
 	if( (adr & ENC28J60_ADDR_MASK) < ENC28J60_COMMON_CR )
 	{
 		bank = (adr >> 5) & 0x03; //BSEL1|BSEL0=0x03
-		if(bank != enc28j60_current_bank)
+		if(bank != enc28j60_current_bank[cs-1])
 		{
 			enc28j60_write_op(cs, ENC28J60_SPI_BFC, ECON1, 0x03);
 			enc28j60_write_op(cs, ENC28J60_SPI_BFS, ECON1, bank);
-			enc28j60_current_bank = bank;
+			enc28j60_current_bank[cs-1] = bank;
 		}
 	}
 }
@@ -181,25 +171,17 @@ void enc28j60_init(uint8_t cs)
 	// Initialize SPI
 	enc28j60_release(cs);
 
-	SPCR = (1<<SPE)|(1<<MSTR);
-	SPSR |= (1<<SPI2X); // Maximum speed
-
-    writeSerial("soft reset start\r\n");
 	// Reset ENC28J60
 	enc28j60_soft_reset(cs);
-    writeSerial("soft reset end\r\n");
+    enc28j60_bfc(cs, ECON1, ECON1_RXEN);
 
 
-    writeSerial("Setup Rx/Tx buffer start\r\n");
 	// Setup Rx/Tx buffer
 	enc28j60_wcr16(cs, ERXST, ENC28J60_RXSTART);
 	enc28j60_wcr16(cs, ERXRDPT, ENC28J60_RXSTART);
 	enc28j60_wcr16(cs, ERXND, ENC28J60_RXEND);
-	enc28j60_rxrdpt = ENC28J60_RXSTART;
-    writeSerial("Setup Rx/Tx buffer end\r\n");
+	enc28j60_rxrdpt[cs-1] = ENC28J60_RXSTART;
 
-
-    writeSerial("Setup MAC start\r\n");
 	// Setup MAC
 	enc28j60_wcr(cs, MACON1, MACON1_TXPAUS| // Enable flow control
 		MACON1_RXPAUS|MACON1_MARXEN); // Enable MAC Rx
@@ -210,7 +192,6 @@ void enc28j60_init(uint8_t cs)
 	enc28j60_wcr(cs, MABBIPG, 0x15); // Set inter-frame gap
 	enc28j60_wcr(cs, MAIPGL, 0x12);
 	enc28j60_wcr(cs, MAIPGH, 0x0c);
-    writeSerial("Setup MAC end\r\n");
 	
     // enc28j60_wcr(MAADR5, macadr[0]); // Set MAC address
 	// enc28j60_wcr(MAADR4, macadr[1]);
@@ -219,19 +200,17 @@ void enc28j60_init(uint8_t cs)
 	// enc28j60_wcr(MAADR1, macadr[4]);
 	// enc28j60_wcr(MAADR0, macadr[5]);
 
-    writeSerial("Setup PHY start\r\n");
+    // enc28j60_wcr(cs, ERXFCON, 0x00); // accept all packets
+
 	// Setup PHY
 	enc28j60_write_phy(cs, PHCON1, PHCON1_PDPXMD); // Force full-duplex mode
 	enc28j60_write_phy(cs, PHCON2, PHCON2_HDLDIS); // Disable loopback
 	enc28j60_write_phy(cs, PHLCON, PHLCON_LACFG2| // Configure LED ctrl
 		PHLCON_LBCFG2|PHLCON_LBCFG1|PHLCON_LBCFG0|
 		PHLCON_LFRQ0|PHLCON_STRCH);
-    writeSerial("Setup PHY end\r\n");
 
-    writeSerial("Enable Rx packets start\r\n");
 	// Enable Rx packets
 	enc28j60_bfs(cs, ECON1, ECON1_RXEN);
-    writeSerial("Enable Rx packets end\r\n");
 }
 
 void enc28j60_send_packet(uint8_t cs, uint8_t *data, uint16_t len)
@@ -289,41 +268,73 @@ struct ReadPacketData {
     uint16_t status;
 } ReadPacketData;
 
+int writeSerial(char* str)
+{
+	for(; *str; str++)
+	{
+        #ifdef UCSRA
+            while(!(UCSRA&(1<<UDRE))){};
+            UDR = *str;
+        #else
+            while(!(UCSR0A&(1<<UDRE0))){};
+            UDR0 = *str;
+        #endif
+	}
+	return 0;
+}
+
+#ifdef DEBUG
+#include <string.h>
+#include <stdio.h>
+
+char debug_buf[64]; 
+
+#define debug_log(...) \
+    sprintf(debug_buf, __VA_ARGS__); \
+    writeSerial(debug_buf);
+#else
+    #define debug_log(...)
+#endif
+
+// 0xC5 = 1100 0101
 uint16_t enc28j60_recv_packet(uint8_t cs, uint8_t *buf, uint16_t buflen)
 {
-	uint16_t temp;
+	uint16_t len = 0, status, temp;
+    
 
-	if(enc28j60_rcr(cs, EPKTCNT))
+    uint8_t num_packets = enc28j60_rcr(cs, EPKTCNT);
+    debug_log("num packets: %u\r\n", num_packets);
+	if(num_packets)
 	{
-		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt);
+		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt[cs-1]);
 
-		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt, sizeof(enc28j60_rxrdpt));
-		enc28j60_read_buffer(cs, (void*)&ReadPacketData.len, sizeof(ReadPacketData.len));
-		enc28j60_read_buffer(cs, (void*)&ReadPacketData.status, sizeof(ReadPacketData.status));
+		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt[cs-1], sizeof(enc28j60_rxrdpt[cs-1]));
+		enc28j60_read_buffer(cs, (void*)&len, sizeof(len));
+		enc28j60_read_buffer(cs, (void*)&status, sizeof(status));
 
-		if(ReadPacketData.status & 0x80) //success
+		if(status & 0x80) //success
 		{
-			if(ReadPacketData.len > buflen) ReadPacketData.len = buflen;
-			enc28j60_read_buffer(cs, buf, ReadPacketData.len);	
+			if(len > buflen) len = buflen;
+			enc28j60_read_buffer(cs, buf, len);	
 		}
 
 		// Set Rx read pointer to next packet
-		temp = (enc28j60_rxrdpt - 1) & ENC28J60_BUFEND;
+		temp = (enc28j60_rxrdpt[cs-1] - 1) & ENC28J60_BUFEND;
 		enc28j60_wcr16(cs, ERXRDPT, temp);
 
 		// Decrement packet counter
 		enc28j60_bfs(cs, ECON2, ECON2_PKTDEC);
 	}
 
-	return ReadPacketData.len;
+	return len;
 }
 
 uint8_t enc28j60_recv_packet_start(uint8_t cs) {
 	if (enc28j60_rcr(cs, EPKTCNT))
 	{
-		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt);
+		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt[cs-1]);
 
-		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt, sizeof(enc28j60_rxrdpt));
+		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt[cs-1], sizeof(enc28j60_rxrdpt[cs-1]));
 		enc28j60_read_buffer(cs, (void*)&ReadPacketData.len, sizeof(ReadPacketData.len));
 		enc28j60_read_buffer(cs, (void*)&ReadPacketData.status, sizeof(ReadPacketData.status));
 
@@ -355,7 +366,7 @@ void enc28j60_recv_packet_end(uint8_t cs) {
     uint16_t temp;
 
     // Set Rx read pointer to next packet
-    temp = (enc28j60_rxrdpt - 1) & ENC28J60_BUFEND;
+    temp = (enc28j60_rxrdpt[cs-1] - 1) & ENC28J60_BUFEND;
     enc28j60_wcr16(cs, ERXRDPT, temp);
 
     // Decrement packet counter

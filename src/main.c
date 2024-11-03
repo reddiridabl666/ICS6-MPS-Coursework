@@ -1,30 +1,34 @@
-#define F_CPU 8000000
+#ifndef F_CPU
+    #define F_CPU 8000000
+#endif
 
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <string.h>
 #include <stdio.h>
 #include "enc28j60.h"
-// #include <avr/iom32.h>
 
-#define BUF_SIZE 500
+#define BUF_SIZE ENC28J60_MAXFRAME
 #define PORTS_NUM 2
 
 uint8_t buf[BUF_SIZE];
 uint8_t ports[PORTS_NUM] = {PB1, PB2};
 
-uint8_t i = 0;
-
 // void receive_and_send_to_others(uint8_t port_num);
 
 void receive_and_send_to_others_simple(uint8_t port_num);
 
-int writeSerial(char* str)
+static int writeSerial(char* str)
 {
 	for(; *str; str++)
 	{
-		while(!(UCSRA&(1<<UDRE))){};
-		UDR = *str;
+        #ifdef UCSRA
+            while(!(UCSRA&(1<<UDRE))){};
+            UDR = *str;
+        #else
+            while(!(UCSR0A&(1<<UDRE0))){};
+            UDR0 = *str;
+        #endif
 	}
 	return 0;
 }
@@ -32,10 +36,8 @@ int writeSerial(char* str)
 // #define DEBUG
 
 #ifdef DEBUG
-char debug_buf[100]; 
-#endif
+char debug_buf[64]; 
 
-#ifdef DEBUG
 #define debug_log(...) \
     sprintf(debug_buf, __VA_ARGS__); \
     writeSerial(debug_buf);
@@ -45,24 +47,32 @@ char debug_buf[100];
 
 int main() {
     ENC28J60_SPI_DDR = (1<<PB1)|(1<<PB2)|ENC28J60_SPI_MOSI|ENC28J60_SPI_SCK;
+    SPCR = (1<<SPE)|(1<<MSTR);
+	SPSR |= (1<<SPI2X); // Maximum speed
 
+#ifdef UCSRA
     UBRRL=F_CPU / (16 * 38400) - 1;
 	UCSRB=(1<<TXEN)|(1<<RXEN);
 	UCSRC=(1<<URSEL)|(3<<UCSZ0);
+#else
+    UBRR0L=F_CPU / (16 * 57600) - 1;
+	UCSR0B=(1<<TXEN0)|(1<<RXEN0);
+	UCSR0C = (1 << USBS0) | (3 << UCSZ00);
+#endif
 
-    for (i = 0; i < PORTS_NUM; ++i) {
+    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         enc28j60_init(ports[i]);
     }
 
     debug_log("enc28j60 initialized\r\n");
 
     while (1) {
-        for (i = 0; i < PORTS_NUM; ++i) {
+        for (uint8_t i = 0; i < PORTS_NUM; ++i) {
             debug_log("reading from PB%d\r\n", i+1);
             // receive_and_send_to_others(i);
             receive_and_send_to_others_simple(i);
-            _delay_ms(100);
         }
+        _delay_ms(100);
     }
 }
 
@@ -73,7 +83,7 @@ void receive_and_send_to_others_simple(uint8_t port_num) {
     }
     debug_log("Read %u bytes from PB%u\r\n", read, port_num+1);
 
-    for (i = 0; i < PORTS_NUM; ++i) {
+    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         if (i != port_num) {
             enc28j60_send_packet(ports[i], buf, read);
             debug_log("Send %u bytes from PB%u to PB%u\r\n", read, port_num+1, i+1);
@@ -96,7 +106,7 @@ void receive_and_send_to_others(uint8_t port_num) {
         return;
     }
     
-    for (i = 0; i < PORTS_NUM; ++i) {
+    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         if (i != port_num) {
             enc28j60_send_packet_start(ports[i]);
         }
@@ -112,7 +122,7 @@ void receive_and_send_to_others(uint8_t port_num) {
         if (read_status.read > 0) {
             total_read += read_status.read;
 
-            for (i = 0; i < PORTS_NUM; ++i) {
+            for (uint8_t i = 0; i < PORTS_NUM; ++i) {
                 if (i != port_num) {
                     enc28j60_send_packet_part(ports[i], buf, read_status.read);
                     debug_log("Send %d bytes from PB%d to PB%d\r\n", read_status.read, port_num+1, i+1);
@@ -126,7 +136,7 @@ void receive_and_send_to_others(uint8_t port_num) {
     debug_log("Receive end for PB%d\r\n", port_num+1);
 
 
-    for (i = 0; i < PORTS_NUM; ++i) {
+    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         if (i != port_num) {
             enc28j60_send_packet_end(ports[i], total_read);
         }
