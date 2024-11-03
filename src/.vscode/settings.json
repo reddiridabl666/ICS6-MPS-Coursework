@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "oddebug.h": "c",
+        "io.h": "c",
+        "iom8515.h": "c",
+        "uart.h": "c",
+        "enc28j60.h": "c",
+        "sfr_defs.h": "c",
+        "boot.h": "c",
+        "pgmspace.h": "c",
+        "string.h": "c",
+        "iom32.h": "c"
+    }
+}

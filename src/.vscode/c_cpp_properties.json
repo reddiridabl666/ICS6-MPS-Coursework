@@ -4,7 +4,8 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "D:\\Program Files\\WinAVR\\avr\\include\\**"
+                "D:\\Program Files\\WinAVR\\avr\\include\\**",
+                "${workspaceFolder}/lib/**"
             ],
             "defines": [
                 "_DEBUG",
