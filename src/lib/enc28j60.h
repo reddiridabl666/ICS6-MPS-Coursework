@@ -10,29 +10,12 @@
 #define ENC28J60_SPI_MISO	(1<<PB6)
 #define ENC28J60_SPI_SCK	(1<<PB7)
 
-#define ENC28J60_NO_DATA 0
-#define ENC28J60_OK 1
-#define ENC28J60_BAD 2
-
-typedef struct ReadStatus {
-    uint16_t read;
-    uint8_t done;
-} ReadStatus;
-
 // Init ENC28J60
 void enc28j60_init(uint8_t cs);
 
 // Snd/Rcv packets
 void enc28j60_send_packet(uint8_t cs, uint8_t *data, uint16_t len);
 uint16_t enc28j60_recv_packet(uint8_t cs, uint8_t *buf, uint16_t buflen);
-
-uint8_t enc28j60_recv_packet_start(uint8_t cs);
-ReadStatus enc28j60_recv_packet_part(uint8_t cs, uint8_t *buf, uint16_t buflen);
-void enc28j60_recv_packet_end(uint8_t cs);
-
-void enc28j60_send_packet_start(uint8_t cs);
-void enc28j60_send_packet_part(uint8_t cs, uint8_t *data, uint16_t len);
-void enc28j60_send_packet_end(uint8_t cs, uint16_t total_len);
 
 // R/W control registers
 uint8_t enc28j60_rcr(uint8_t cs, uint8_t adr);

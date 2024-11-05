@@ -13,6 +13,10 @@
         "iom644.h": "c",
         "iousb1286.h": "c",
         "iomxx4.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "delay.h": "c",
+        "stdint.h": "c",
+        "display.h": "c",
+        "lcd.h": "c"
     }
 }

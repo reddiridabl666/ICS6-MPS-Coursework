@@ -6,50 +6,39 @@
 #include <avr/io.h>
 #include <string.h>
 #include <stdio.h>
+
 #include "enc28j60.h"
+#include "uart.h"
+#include "display.h"
+#include "LCD.h"
 
 #define BUF_SIZE ENC28J60_MAXFRAME
 #define PORTS_NUM 2
+#define CMD_BUF_SIZE 32
 
 uint8_t buf[BUF_SIZE];
 uint8_t ports[PORTS_NUM] = {PB1, PB2};
 
-// void receive_and_send_to_others(uint8_t port_num);
+uint16_t transmitted_data[PORTS_NUM] = {0, 0};
 
-void receive_and_send_to_others_simple(uint8_t port_num);
-
-static int writeSerial(char* str)
-{
-	for(; *str; str++)
-	{
-        #ifdef UCSRA
-            while(!(UCSRA&(1<<UDRE))){};
-            UDR = *str;
-        #else
-            while(!(UCSR0A&(1<<UDRE0))){};
-            UDR0 = *str;
-        #endif
-	}
-	return 0;
-}
-
-// #define DEBUG
+uint8_t cmd_buf[CMD_BUF_SIZE];
+uint8_t cmd_ptr = 0;
 
 #ifdef DEBUG
-char debug_buf[64]; 
-
-#define debug_log(...) \
-    sprintf(debug_buf, __VA_ARGS__); \
-    writeSerial(debug_buf);
-#else
-    #define debug_log(...)
+uint16_t read_packets[PORTS_NUM] = {0, 0};
 #endif
 
-int main() {
+void receive_and_send_to_others(uint8_t port_num);
+void process_uart_input();
+void display_init();
+
+void init_spi() {
     ENC28J60_SPI_DDR = (1<<PB1)|(1<<PB2)|ENC28J60_SPI_MOSI|ENC28J60_SPI_SCK;
     SPCR = (1<<SPE)|(1<<MSTR);
 	SPSR |= (1<<SPI2X); // Maximum speed
+}
 
+void init_uart() {
 #ifdef UCSRA
     UBRRL=F_CPU / (16 * 38400) - 1;
 	UCSRB=(1<<TXEN)|(1<<RXEN);
@@ -59,6 +48,16 @@ int main() {
 	UCSR0B=(1<<TXEN0)|(1<<RXEN0);
 	UCSR0C = (1 << USBS0) | (3 << UCSZ00);
 #endif
+}
+
+int main() {
+    memset(cmd_buf, 0, CMD_BUF_SIZE);
+    memset(buf, 0, BUF_SIZE);
+
+    init_spi();
+    init_uart();
+
+    display_init();
 
     for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         enc28j60_init(ports[i]);
@@ -66,81 +65,76 @@ int main() {
 
     debug_log("enc28j60 initialized\r\n");
 
+    // display_writeString("Hello, world!");
+
     while (1) {
-        for (uint8_t i = 0; i < PORTS_NUM; ++i) {
-            debug_log("reading from PB%d\r\n", i+1);
-            // receive_and_send_to_others(i);
-            receive_and_send_to_others_simple(i);
-        }
+        LCDstring("Hello, world!", 0, 0);
         _delay_ms(100);
+    }
+    // while (1) {
+    //     for (uint8_t i = 0; i < PORTS_NUM; ++i) {
+    //         // debug_log("\r\nreading from PB%d\r\n", i+1);
+    //         receive_and_send_to_others(i);
+    //     }
+
+    //     process_uart_input();
+    // }
+}
+
+void process_uart_input() {
+    uint8_t byte = readByteSerial();
+    
+    if (byte) {
+        if (byte == '\r' || cmd_ptr >= BUF_SIZE) {
+            writeSerial(cmd_buf);
+            writeSerial("\r\n");
+
+            cmd_ptr = 0;
+            memset(cmd_buf, 0, BUF_SIZE);
+        
+            return;
+        }
+        cmd_buf[cmd_ptr++] = byte;
     }
 }
 
-void receive_and_send_to_others_simple(uint8_t port_num) {
+void display_init() {
+    // PORTA = 0x00;
+    // DDRA = 0xFF;
+
+    // _delay_ms(15);
+    // display_writeHalfByte(0x30);
+    // _delay_ms(5);
+    // display_writeHalfByte(0x30);
+    // _delay_ms(5);
+    // display_writeHalfByte(0x30);
+
+    // display_writeCommand(0x22);
+    // display_writeCommand(0x0C);
+    // display_writeCommand(0x01);
+    _delay_ms(100);
+    LCDinit();
+    LCDclear();
+}
+
+void receive_and_send_to_others(uint8_t port_num) {
     uint16_t read = enc28j60_recv_packet(ports[port_num], buf, BUF_SIZE);
     if (read == 0) {
         return;
     }
     debug_log("Read %u bytes from PB%u\r\n", read, port_num+1);
+    transmitted_data[port_num] += read;
+
+#ifdef DEBUG
+    read_packets[port_num] += 1;
+    debug_log("Total read packets from PB%u: %u\r\n", port_num+1, read_packets[port_num])
+#endif
 
     for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         if (i != port_num) {
             enc28j60_send_packet(ports[i], buf, read);
             debug_log("Send %u bytes from PB%u to PB%u\r\n", read, port_num+1, i+1);
+            transmitted_data[i] += read;
         }
     }
 }
-
-/* uint16_t total_read = 0;
-
-void receive_and_send_to_others(uint8_t port_num) {
-    uint8_t port = ports[port_num];
-
-    uint8_t status = enc28j60_recv_packet_start(port);
-    if (status == ENC28J60_NO_DATA) {
-        debug_log("PB%d NO DATA\r\n", port_num+1);
-        return;
-    } else if (status == ENC28J60_BAD) {
-        debug_log("PB%d BAD STATUS\r\n", port_num+1);
-        enc28j60_recv_packet_end(port);
-        return;
-    }
-    
-    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
-        if (i != port_num) {
-            enc28j60_send_packet_start(ports[i]);
-        }
-    }
-
-    debug_log("Ports send started\r\n", port_num+1);
-
-    ReadStatus read_status;
-    do {
-        read_status = enc28j60_recv_packet_part(port, buf, BUF_SIZE);
-        debug_log("Received %d bytes from PB%d\r\n", read_status.read, port_num+1);
-
-        if (read_status.read > 0) {
-            total_read += read_status.read;
-
-            for (uint8_t i = 0; i < PORTS_NUM; ++i) {
-                if (i != port_num) {
-                    enc28j60_send_packet_part(ports[i], buf, read_status.read);
-                    debug_log("Send %d bytes from PB%d to PB%d\r\n", read_status.read, port_num+1, i+1);
-                }
-            }
-        }
-    }
-    while (!read_status.done && read_status.read > 0);
-
-    enc28j60_recv_packet_end(port);
-    debug_log("Receive end for PB%d\r\n", port_num+1);
-
-
-    for (uint8_t i = 0; i < PORTS_NUM; ++i) {
-        if (i != port_num) {
-            enc28j60_send_packet_end(ports[i], total_read);
-        }
-    }
-    debug_log("Ports send end\r\n");
-}
- */

@@ -1,4 +1,5 @@
-#include "./enc28j60.h"
+#include "enc28j60.h"
+#include "uart.h"
 
 /*
  * SPI
@@ -182,6 +183,10 @@ void enc28j60_init(uint8_t cs)
 	enc28j60_wcr16(cs, ERXND, ENC28J60_RXEND);
 	enc28j60_rxrdpt[cs-1] = ENC28J60_RXSTART;
 
+    enc28j60_wcr(cs, ERXFCON, 0x40); // accept all packets
+
+    // while (!(enc28j60_rcr(cs, ESTAT) & ESTAT_CLKRDY)) {}
+
 	// Setup MAC
 	enc28j60_wcr(cs, MACON1, MACON1_TXPAUS| // Enable flow control
 		MACON1_RXPAUS|MACON1_MARXEN); // Enable MAC Rx
@@ -199,8 +204,6 @@ void enc28j60_init(uint8_t cs)
 	// enc28j60_wcr(MAADR2, macadr[3]);
 	// enc28j60_wcr(MAADR1, macadr[4]);
 	// enc28j60_wcr(MAADR0, macadr[5]);
-
-    // enc28j60_wcr(cs, ERXFCON, 0x00); // accept all packets
 
 	// Setup PHY
 	enc28j60_write_phy(cs, PHCON1, PHCON1_PDPXMD); // Force full-duplex mode
@@ -236,76 +239,15 @@ void enc28j60_send_packet(uint8_t cs, uint8_t *data, uint16_t len)
 	enc28j60_bfs(cs, ECON1, ECON1_TXRTS); // Request packet send
 }
 
-void enc28j60_send_packet_start(uint8_t cs) {
-    while(enc28j60_rcr(cs, ECON1) & ECON1_TXRTS)
-	{
-		// TXRTS may not clear - ENC28J60 bug. We must reset
-		// transmit logic in cause of Tx error
-		if(enc28j60_rcr(cs, EIR) & EIR_TXERIF)
-		{
-			enc28j60_bfs(cs, ECON1, ECON1_TXRST);
-			enc28j60_bfc(cs, ECON1, ECON1_TXRST);
-		}
-	}
-
-	enc28j60_wcr16(cs, EWRPT, ENC28J60_TXSTART);
-	enc28j60_write_buffer(cs, (uint8_t*)"\x00", 1);
-}
-
-void enc28j60_send_packet_part(uint8_t cs, uint8_t *data, uint16_t len) {
-    enc28j60_write_buffer(cs, data, len);
-}
-
-void enc28j60_send_packet_end(uint8_t cs, uint16_t total_len) {
-    enc28j60_wcr16(cs, ETXST, ENC28J60_TXSTART);
-	enc28j60_wcr16(cs, ETXND, ENC28J60_TXSTART + total_len);
-
-	enc28j60_bfs(cs, ECON1, ECON1_TXRTS); // Request packet send
-}
-
-struct ReadPacketData {
-    uint16_t len;
-    uint16_t status;
-} ReadPacketData;
-
-int writeSerial(char* str)
-{
-	for(; *str; str++)
-	{
-        #ifdef UCSRA
-            while(!(UCSRA&(1<<UDRE))){};
-            UDR = *str;
-        #else
-            while(!(UCSR0A&(1<<UDRE0))){};
-            UDR0 = *str;
-        #endif
-	}
-	return 0;
-}
-
-#ifdef DEBUG
-#include <string.h>
-#include <stdio.h>
-
-char debug_buf[64]; 
-
-#define debug_log(...) \
-    sprintf(debug_buf, __VA_ARGS__); \
-    writeSerial(debug_buf);
-#else
-    #define debug_log(...)
-#endif
-
 // 0xC5 = 1100 0101
 uint16_t enc28j60_recv_packet(uint8_t cs, uint8_t *buf, uint16_t buflen)
 {
 	uint16_t len = 0, status, temp;
-    
 
     uint8_t num_packets = enc28j60_rcr(cs, EPKTCNT);
-    debug_log("num packets: %u\r\n", num_packets);
-	if(num_packets)
+    if(num_packets)
 	{
+        debug_log("\r\nnum packets before read: %u\r\n", num_packets);
 		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt[cs-1]);
 
 		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt[cs-1], sizeof(enc28j60_rxrdpt[cs-1]));
@@ -327,48 +269,4 @@ uint16_t enc28j60_recv_packet(uint8_t cs, uint8_t *buf, uint16_t buflen)
 	}
 
 	return len;
-}
-
-uint8_t enc28j60_recv_packet_start(uint8_t cs) {
-	if (enc28j60_rcr(cs, EPKTCNT))
-	{
-		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt[cs-1]);
-
-		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt[cs-1], sizeof(enc28j60_rxrdpt[cs-1]));
-		enc28j60_read_buffer(cs, (void*)&ReadPacketData.len, sizeof(ReadPacketData.len));
-		enc28j60_read_buffer(cs, (void*)&ReadPacketData.status, sizeof(ReadPacketData.status));
-
-        if (ReadPacketData.status & 0x80) {
-            return ENC28J60_OK;
-        }
-        return ENC28J60_BAD;
-    }
-
-    return ENC28J60_NO_DATA;
-}
-
-ReadStatus enc28j60_recv_packet_part(uint8_t cs, uint8_t *buf, uint16_t buflen) {
-    int len = ReadPacketData.len;
-    if (len > buflen)
-        len = buflen;
-    
-    enc28j60_read_buffer(cs, buf, len);
-    ReadPacketData.len -= len;
-
-    ReadStatus result;
-    result.read = len;
-    result.done = ReadPacketData.len == 0;
-
-    return result;
-}
-
-void enc28j60_recv_packet_end(uint8_t cs) {
-    uint16_t temp;
-
-    // Set Rx read pointer to next packet
-    temp = (enc28j60_rxrdpt[cs-1] - 1) & ENC28J60_BUFEND;
-    enc28j60_wcr16(cs, ERXRDPT, temp);
-
-    // Decrement packet counter
-    enc28j60_bfs(cs, ECON2, ECON2_PKTDEC);
 }

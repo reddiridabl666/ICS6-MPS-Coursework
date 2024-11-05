@@ -2,9 +2,9 @@ F_CPU = 8000000
 # MCU = atmega8515
 MCU = atmega32
 OUT = build/kursach
-SRC = lib/enc28j60.c main.c
+SRC = lib/enc28j60.c lib/uart.c lib/display.c lib/LCD.c main.c
 INCLUDE = -I lib
-DEBUG ?= true
+DEBUG ?= false
 
 .PHONY: build hex hex_64 build_64
 
@@ -17,10 +17,10 @@ hex_64: build_64
 	avr-objcopy -j .text -j .data -O ihex ${OUT}_64.elf ${OUT}_64.hex
 
 build:
-	avr-gcc -std=c99 -Os ${INCLUDE} -D DEBUG=${DEBUG} -D F_CPU=${F_CPU} -g -mmcu=${MCU}    ${SRC} -o ${OUT}.elf
+	avr-gcc -std=gnu99 -Os ${INCLUDE} -D DEBUG -D F_CPU=${F_CPU} -g -mmcu=${MCU}    ${SRC} -o ${OUT}.elf
 
 build_64:
-	avr-gcc -std=c99 -Os ${INCLUDE} -D DEBUG=${DEBUG} -D F_CPU=12000000 -g -mmcu=atmega644 ${SRC} -o ${OUT}_64.elf
+	avr-gcc -std=gnu99 -Os ${INCLUDE} -D DEBUG=${DEBUG} -D F_CPU=12000000 -g -mmcu=atmega644 ${SRC} -o ${OUT}_64.elf
 
 clear:
 	rm build/*
