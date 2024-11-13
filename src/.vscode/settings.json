@@ -17,6 +17,7 @@
         "delay.h": "c",
         "stdint.h": "c",
         "display.h": "c",
-        "lcd.h": "c"
+        "lcd.h": "c",
+        "interrupt.h": "c"
     }
 }
