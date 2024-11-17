@@ -11,7 +11,7 @@
 #define ENC28J60_SPI_SCK	(1<<PB7)
 
 // Init ENC28J60
-void enc28j60_init(uint8_t cs);
+void enc28j60_init(uint8_t cs, uint8_t* macadr);
 
 // Snd/Rcv packets
 void enc28j60_send_packet(uint8_t cs, uint8_t *data, uint16_t len);

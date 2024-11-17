@@ -13,14 +13,14 @@ all: hex hex_324
 hex: build
 	avr-objcopy -j .text -j .data -O ihex ${OUT}.elf ${OUT}.hex
 
-hex_324: build_64
-	avr-objcopy -j .text -j .data -O ihex ${OUT}_64.elf ${OUT}_64.hex
+hex_324: build_324
+	avr-objcopy -j .text -j .data -O ihex ${OUT}_324.elf ${OUT}_324.hex
 
 build:
 	avr-gcc -std=gnu99 -Os ${INCLUDE} -D DEBUG -D F_CPU=${F_CPU} -g -mmcu=${MCU}    ${SRC} -o ${OUT}.elf
 
-build_64:
-	avr-gcc -std=gnu99 -Os ${INCLUDE} -D DEBUG=${DEBUG} -D F_CPU=10000000 -g -mmcu=atmega324 ${SRC} -o ${OUT}_64.elf
+build_324:
+	avr-gcc -std=gnu99 -Os ${INCLUDE} -D DEBUG=${DEBUG} -D F_CPU=8000000 -g -mmcu=atmega324p ${SRC} -o ${OUT}_324.elf
 
 clear:
 	rm build/*

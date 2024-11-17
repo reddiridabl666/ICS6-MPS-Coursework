@@ -167,7 +167,7 @@ void enc28j60_write_phy(uint8_t cs, uint8_t adr, uint16_t data)
  * Init & packet Rx/Tx
  */
 
-void enc28j60_init(uint8_t cs)
+void enc28j60_init(uint8_t cs, uint8_t* macadr)
 {
 	// Initialize SPI
 	enc28j60_release(cs);
@@ -197,13 +197,13 @@ void enc28j60_init(uint8_t cs)
 	enc28j60_wcr(cs, MABBIPG, 0x15); // Set inter-frame gap
 	enc28j60_wcr(cs, MAIPGL, 0x12);
 	enc28j60_wcr(cs, MAIPGH, 0x0c);
-	
-    // enc28j60_wcr(MAADR5, macadr[0]); // Set MAC address
-	// enc28j60_wcr(MAADR4, macadr[1]);
-	// enc28j60_wcr(MAADR3, macadr[2]);
-	// enc28j60_wcr(MAADR2, macadr[3]);
-	// enc28j60_wcr(MAADR1, macadr[4]);
-	// enc28j60_wcr(MAADR0, macadr[5]);
+    
+    enc28j60_wcr(cs, MAADR5, macadr[0]); // Set MAC address
+	enc28j60_wcr(cs, MAADR4, macadr[1]);
+	enc28j60_wcr(cs, MAADR3, macadr[2]);
+	enc28j60_wcr(cs, MAADR2, macadr[3]);
+	enc28j60_wcr(cs, MAADR1, macadr[4]);
+	enc28j60_wcr(cs, MAADR0, macadr[5]);
 
 	// Setup PHY
 	enc28j60_write_phy(cs, PHCON1, PHCON1_PDPXMD); // Force full-duplex mode
