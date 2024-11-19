@@ -1,5 +1,4 @@
 #include "enc28j60.h"
-#include "uart.h"
 
 /*
  * SPI
@@ -247,7 +246,6 @@ uint16_t enc28j60_recv_packet(uint8_t cs, uint8_t *buf, uint16_t buflen)
     uint8_t num_packets = enc28j60_rcr(cs, EPKTCNT);
     if(num_packets)
 	{
-        debug_log("\r\nnum packets before read: %u\r\n", num_packets);
 		enc28j60_wcr16(cs, ERDPT, enc28j60_rxrdpt[cs-1]);
 
 		enc28j60_read_buffer(cs, (void*)&enc28j60_rxrdpt[cs-1], sizeof(enc28j60_rxrdpt[cs-1]));

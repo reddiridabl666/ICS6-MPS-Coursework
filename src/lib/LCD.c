@@ -78,6 +78,7 @@ void LCDdata(uint8_t i)						//Отправка символа для отобр
 	Send_byte(i);
 	CPORT&=~(1<<RS);//RS=0
 }
+
 void LCDGotoXY(uint8_t x,uint8_t y)			//Устанавливаем курсор в X, Y позицию
 {
 	 uint8_t Address;
@@ -93,6 +94,7 @@ void LCDGotoXY(uint8_t x,uint8_t y)			//Устанавливаем курсор 
 	
 	LCDcommand(1<<7 | Address);
 }
+
 void LCDstring(char *i,uint8_t x,uint8_t y) //Вывести строку на дисплей.
 {
 	LCDGotoXY(x,y);
@@ -101,128 +103,11 @@ void LCDstring(char *i,uint8_t x,uint8_t y) //Вывести строку на �
 		LCDdata(*i++ );
 	}
 }
-void LCDstring_of_sram(uint8_t* data,uint8_t nBytes,uint8_t x, uint8_t y)
-{
-	uint8_t i;
-	LCDGotoXY(x,y);
-	if (!data) 
-	{
-		return;
-	}
-	
-	for(i=0; i<nBytes; i++)
-	{
-		LCDdata(data[i]);
-	}
-	
-	
-}
-void LCDstring_of_flash(const uint8_t *FlashLoc,uint8_t x,uint8_t y)
-{
-	uint8_t i;
-	LCDGotoXY(x,y);
-	for(i=0;(uint8_t)pgm_read_byte(&FlashLoc[i]);i++)
-	{
-		LCDdata((uint8_t)pgm_read_byte(&FlashLoc[i]));
-	}
-}
-void LCDset(void)			//Двухстрочный дисплей 5x8 точек
-{
-	LCDcommand(0b101000);
-}
-void LCDblank(void)			//Сделать невидимой инфо на дисплее
-{
-	LCDcommand(0b1000);
-}
-void LCDnblank(void)		//Сделать видимой инфо на дисплее + отключить видимые курсоры.
-{
-	LCDcommand(0b1100);
-}
+
 void LCDclear(void)			//Очистка дисплея + курсор на позицию 0,0
 {
 	LCDcommand(0b1);
 }
-void LCDcursor_bl(void)		//Включить мигающий курсор
-{
-	LCDcommand(0b1101);
-}
-void LCDcursor_on(void)		//Включить подчеркивающий курсор
-{
-	LCDcommand(0b1110);
-}
-void LCDcursor_vi(void)		//Включить оба курсора
-{
-	LCDcommand(0b1111);
-}
-void LCDcursorOFF(void)		//Выключить курсор
-{
-	LCDcommand(0b1100);
-}
-void LCDacr(void)			//Cчетчик адреса всегда будет смещаться на n+1
-{
-	LCDcommand(0b110);
-}
-void LCDacl(void)			//Cчетчик адреса всегда будет смещаться на n-1
-{
-	LCDcommand(0b100);
-}
-void LCDcursorl(void)		//Сместить курсор влево на 1
-{
-	LCDcommand(0b10000);
-}
-void LCDcursorr(void)		//Сместить курсор вправо на 1
-{
-	LCDcommand(0b10100);
-}
-void LCDcursorln(uint8_t n)	//Сместить курсор влево на n символов
-{
-	for (uint8_t i=0;i<n;i++)
-	{
-		LCDcommand(0b10000);
-	}
-}
-void LCDcursorrn(uint8_t n)	//Сместить курсор вправо на n символов
-{
-	for (uint8_t i=0;i<n;i++)
-	{
-		LCDcommand(0b10100);
-	}
-}
-void LCDscreenl(void)		//Сместить экран влево на 1
-{
-	LCDcommand(0b11000);
-}
-void LCDscreenr(void)		//Сместить экран вправо на 1
-{
-	LCDcommand(0b11100);
-}
-void LCDscreenln(uint8_t n)	//Сместить экран влево на n символов
-{
-	for (uint8_t i=0;i<n;i++)
-	{
-		LCDcommand(0b11000);
-	}
-}
-void LCDscreenrn(uint8_t n)	//Сместить экран вправо на n символов
-{
-	for (uint8_t i=0;i<n;i++)
-	{
-		LCDcommand(0b11100);
-	}
-}
-void LCDscreenL(void)		//С каждым новым символом экран будет смещаться влево
-{
-	LCDcommand(0b101);
-}
-void LCDscreenR(void)		//С каждым новым символом экран будет смещаться вправо
-{
-	LCDcommand(0b111);
-}
-void LCDresshift(void)      //Установить курсор в позицию 0,0 + сброс всех сдвигов, изображение остается
-{
-	LCDcommand(0b10);
-}
-
 
 //Системные функции, их не трогаем, они для работы дисплея.
 void Send_byte(uint8_t i)	//Передача данных LCD, вызывается функциями Send_command и Send_data.

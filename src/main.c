@@ -20,7 +20,13 @@
 #define false 0
 
 #define BUF_SIZE ENC28J60_MAXFRAME
-#define PORTS_NUM 2
+
+#ifndef SLAVE
+    #define PORTS_NUM 2
+#else
+    #define PORTS_NUM 1
+#endif
+
 #define CMD_BUF_SIZE 8
 #define CMD_LEN 4
 #define MAC_ADDR_LEN 6
@@ -31,14 +37,26 @@
 #define RS232 0
 #define BT 1
 #define PING_DATA_SIZE 2
+#define PING_TIMEOUT 5000
 
 uint8_t buf[BUF_SIZE];
-uint8_t ports[PORTS_NUM] = {PB1, PB2};
 
-uint8_t macaddrs[PORTS_NUM][MAC_ADDR_LEN] = {
-    {0x7a, 0xe8, 0x14, 0xa2, 0x6d, 0x86},
-    {0x7a, 0xe8, 0x14, 0xa2, 0x6d, 0x97},
-};
+#ifndef SLAVE
+uint8_t ports[PORTS_NUM] = {PB1, PB2};
+#else
+uint8_t ports[PORTS_NUM] = {PB1};
+#endif
+
+#ifndef SLAVE
+    uint8_t macaddrs[PORTS_NUM][MAC_ADDR_LEN] = {
+        {0xa1, 0xe8, 0x14, 0xa2, 0x6d, 0x86},
+        {0xa2, 0xe8, 0x14, 0xa2, 0x6d, 0x97},
+    };
+#else
+    uint8_t macaddrs[PORTS_NUM][MAC_ADDR_LEN] = {
+        {0xb1, 0xe8, 0x14, 0xa2, 0x6d, 0x86},
+    };
+#endif
 
 uint16_t transmitted_data[4] = {0, 0, 0, 0};
 uint16_t delays_tmp[4] = {0, 0, 0, 0};
@@ -66,6 +84,10 @@ void process_ping_result(uint8_t port_num);
 void process_uart_input();
 void display_init();
 
+#ifdef SLAVE
+void echo(uint8_t port_num);
+#endif
+
 void init_spi();
 void init_uart();
 void init_timers();
@@ -88,39 +110,36 @@ int main() {
 
     debug_log("enc28j60 initialized\r\n");
 
-    LCDstring("Hello, world!", 0, 0);
-
     while (1) {
-        // for (uint8_t i = 0; i < PORTS_NUM; ++i) {
-        //     // debug_log("\r\nreading from PB%d\r\n", i+1);
-        //     receive_and_send_to_others(i);
-        // }
-
+#ifndef SLAVE
+        for (uint8_t i = 0; i < PORTS_NUM; ++i) {
+            receive_and_send_to_others(i);
+        }
+#else
+        for (uint8_t i = 0; i < PORTS_NUM; ++i) {
+            echo(i);
+        }
+#endif
         process_uart_input();
     }
 }
 
 char* invalid_cmd = "Invalid command\r\n";
-char* invalid_arg = "Invalid argument\r\n";
 
 inline int8_t process_command(char *c) {
-    // writeSerial("Got: ");
-    // writeSerial(c);
-    // writeSerial("\r\n");
-
     while (isspace(*c)) {
         ++c;
     }
 
     if (strlen(c) < CMD_LEN + 2 || c[CMD_LEN] != ' ') {
         writeSerial(invalid_cmd);
-        return -1;
+        return 0;
     }
 
     c[CMD_LEN] = '\0';
     if (strcmp(c, "ping") != 0) {
         writeSerial(invalid_cmd);
-        return -1;
+        return 0;
     }
 
     c += CMD_LEN + 1;
@@ -130,19 +149,15 @@ inline int8_t process_command(char *c) {
 
     uint8_t port = *c - '0';
     if (port < 1 || port > 4) {
-        writeSerial(invalid_arg);
-        return -1;
+        writeSerial(invalid_cmd);
+        return 0;
     }
 
     char last = *(c + 1);
     if (last != '\0') {
-        writeSerial(invalid_arg);
-        return -1;
+        writeSerial(invalid_cmd);
+        return 0;
     }
-
-    writeSerial("ping command parsed, port is: ");
-    writeSerial(c);
-    writeSerial("\r\n");
 
     return port;
 }
@@ -154,12 +169,18 @@ inline void process_uart(uint8_t sender, char* buf, uint8_t *ptr) {
 
     if (byte) {
         if (byte == '\r' || *ptr >= CMD_BUF_SIZE - 1) {
-            int8_t port = process_command(buf);
+            int8_t port = process_command(buf) - 1;
               
             *ptr = 0;
             memset(buf, 0, CMD_BUF_SIZE);
 
             if (port != -1) {
+                if (sender == RS232) {
+                    debug_log("pinging P%u by RS232\r\n", port+1);
+                }
+                if (sender == BT) {
+                    debug_log("pinging P%u by BT\r\n", port+1);
+                }
                 ping(port, sender);
             }
             return;
@@ -229,11 +250,13 @@ char* lcd_msg_pattern = "P%u %u b/s %u ms";
 char lcd_msg[20];
 
 #define apply_lcd_msg(port) \
-    memset(lcd_msg, 0, sizeof(lcd_msg)); \
-    sprintf(lcd_msg, lcd_msg_pattern, port+1, transmitted_data[port], delays[port])
+    size = sprintf(lcd_msg, lcd_msg_pattern, port+1, transmitted_data[port], delays[port]); \
+    memset(lcd_msg+size, ' ', sizeof(lcd_msg)-size-1); \
+    lcd_msg[sizeof(lcd_msg)-1] = '\0'
 
 ISR (TIMER1_OVF_vect) {
     TCNT1 = 0x85EE; // 1 second
+    int size;
 
     apply_lcd_msg(0);
     LCDstring(lcd_msg, 0, 0);
@@ -251,13 +274,16 @@ ISR (TIMER1_OVF_vect) {
         transmitted_data[i] = 0;
     }
 
+#ifndef SLAVE
     ping_timer += 1;
     if (ping_timer >= REGULAR_PING_INTERVAL) {
         for (uint8_t i = 0; i < PORTS_NUM; ++i) {
+            debug_log("pinging P%u\r\n", i+1);
             ping_internal(i);
         }
         ping_timer = 0;
     }
+#endif
 }
 
 ISR (TIMER0_OVF_vect) {
@@ -267,8 +293,14 @@ ISR (TIMER0_OVF_vect) {
         delays_tmp[i] += 1;
     }
 
-    ping_delay[RS232] += 1;
-    ping_delay[BT] += 1;
+    for (uint8_t i = 0; i < 2; ++i) {
+        ping_delay[i] += 1;
+
+        if (ping_port[i] != -1 && ping_delay[i] > PING_TIMEOUT) {
+            serial_set_port(i);
+            writeSerial("no response got\r\n");
+        }
+    }
 }
 
 void receive_and_send_to_others(uint8_t port_num) {
@@ -276,10 +308,12 @@ void receive_and_send_to_others(uint8_t port_num) {
     if (read == 0) {
         return;
     }
-    debug_log("Read %u bytes from PB%u\r\n", read, port_num+1);
+    // debug_log("Read %u bytes from PB%u\r\n", read, port_num+1);
     transmitted_data[port_num] += read;
 
     if (strncmp(buf, macaddrs[port_num], MAC_ADDR_LEN) == 0) {
+        debug_log("got frame addresed to P%u\r\n", port_num+1);
+
         delays[port_num] = delays_tmp[port_num];
         delays_tmp[port_num] = 0;
     
@@ -293,7 +327,7 @@ void receive_and_send_to_others(uint8_t port_num) {
     for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         if (i != port_num) {
             enc28j60_send_packet(ports[i], buf, read);
-            debug_log("Send %u bytes from PB%u to PB%u\r\n", read, port_num+1, i+1);
+            // debug_log("Send %u bytes from PB%u to PB%u\r\n", read, port_num+1, i+1);
             transmitted_data[i] += read;
         }
     }
@@ -303,48 +337,58 @@ typedef struct eth_frame {
     uint8_t to_addr[6];
     uint8_t from_addr[6];
     uint16_t len;
-    uint8_t data[];
+    uint8_t data[4];
 } eth_frame_t;
 
 uint8_t broadcast_mac[MAC_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+#define FRAME_HEADER_SIZE 14
 
 void ping(uint8_t port_num, uint8_t sender) {
     eth_frame_t frame;
 
     memcpy(frame.from_addr, macaddrs[port_num], MAC_ADDR_LEN);
     memcpy(frame.to_addr, broadcast_mac, MAC_ADDR_LEN);
-    frame.len = sizeof(frame) + PING_DATA_SIZE;
+    frame.len = FRAME_HEADER_SIZE + PING_DATA_SIZE;
     memcpy(frame.data, ping_msg[sender], PING_DATA_SIZE);
 
     ping_port[sender] = port_num;
     ping_delay[sender] = 0;
 
+    transmitted_data[port_num] += frame.len;
     enc28j60_send_packet(ports[port_num], (void*)&frame, frame.len);
 }
+
+#define TEST_DATA_SIZE 4
 
 void ping_internal(uint8_t port_num) {
     eth_frame_t frame;
 
     memcpy(frame.from_addr, macaddrs[port_num], MAC_ADDR_LEN);
     memcpy(frame.to_addr, broadcast_mac, MAC_ADDR_LEN);
-    frame.len = sizeof(frame) + 4;
+    frame.len = FRAME_HEADER_SIZE + TEST_DATA_SIZE;
 
     delays_tmp[port_num] = 0;
     delays[port_num] = 0;
 
-    memcpy(frame.data, "TEST", 4);
+    memcpy(frame.data, "TEST", TEST_DATA_SIZE);
 
+    transmitted_data[port_num] += frame.len;
     enc28j60_send_packet(ports[port_num], (void*)&frame, frame.len);
 }
 
 char* ping_resp_fmt = "ping ok: %u ms\r\n";
-char ping_resp[32];
+char ping_resp[24];
 
 void process_ping_result(uint8_t sender) {
+    debug_log("cmp got data with sent\r\n");
+
     eth_frame_t* frame = (eth_frame_t*)buf;
     if (strncmp(frame->data, ping_msg[sender], PING_DATA_SIZE) != 0) {
         return;
     }
+
+    debug_log("got resp for sender %u\r\n", sender);
 
     memset(ping_resp, 0, 32);
     sprintf(ping_resp, ping_resp_fmt, ping_delay[sender]);
@@ -352,3 +396,39 @@ void process_ping_result(uint8_t sender) {
     serial_set_port(sender);
     writeSerial(ping_resp);
 }
+
+
+// #ifdef SLAVE
+void echo(uint8_t port_num) {
+    uint16_t read = enc28j60_recv_packet(ports[port_num], buf, BUF_SIZE);
+    if (read == 0) {
+        return;
+    }
+
+    // debug_log("to_addr %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+    //     frame->to_addr[0], frame->to_addr[1], frame->to_addr[2],
+    //     frame->to_addr[3], frame->to_addr[4], frame->to_addr[5]);
+
+    eth_frame_t* frame = (eth_frame_t*)buf;
+    if (strncmp(frame->to_addr, macaddrs[port_num], MAC_ADDR_LEN) != 0 &&
+        strncmp(frame->to_addr, broadcast_mac, MAC_ADDR_LEN) != 0) {
+        return;
+    }
+
+    transmitted_data[port_num] += read;
+
+    debug_log("got data from %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+        frame->from_addr[0], frame->from_addr[1], frame->from_addr[2],
+        frame->from_addr[3], frame->from_addr[4], frame->from_addr[5]);
+    
+    memcpy(frame->to_addr, frame->from_addr, MAC_ADDR_LEN);
+    memcpy(frame->from_addr, macaddrs[port_num], MAC_ADDR_LEN);
+
+    debug_log("responding to %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+        frame->to_addr[0], frame->to_addr[1], frame->to_addr[2],
+        frame->to_addr[3], frame->to_addr[4], frame->to_addr[5]);
+
+    transmitted_data[port_num] += frame->len;
+    enc28j60_send_packet(ports[port_num], (void*)frame, read);
+}
+// #endif
