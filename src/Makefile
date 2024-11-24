@@ -1,7 +1,7 @@
 F_CPU = 8000000
 MCU = atmega324p
 OUT = build/kursach
-SRC = lib/enc28j60.c lib/uart.c lib/display.c lib/LCD.c main.c
+SRC = lib/enc28j60.c lib/uart.c lib/LCD.c main.c
 INCLUDE = -I lib
 DEBUG ?= false
 

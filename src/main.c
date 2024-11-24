@@ -11,7 +11,6 @@
 
 #include "enc28j60.h"
 #include "uart.h"
-#include "display.h"
 #include "LCD.h"
 
 #define true 1
@@ -288,6 +287,7 @@ ISR (TIMER1_OVF_vect) {
 #endif
 }
 
+#ifndef ECHO
 ISR (TIMER0_OVF_vect) {
     TCNT0 = T0_MILLISECOND;
 
@@ -359,6 +359,7 @@ void receive_and_send_to_others(uint8_t port_num) {
         }
     }
 }
+#endif
 
 typedef struct eth_frame {
     uint8_t to_addr[6];

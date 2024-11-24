@@ -9,7 +9,6 @@ uint8_t writeSerialByte(char c);
 
 uint8_t uartReady();
 
-uint16_t readSerialUntil(char* buf, char delim, uint16_t size);
 uint8_t readByteSerial();
 
 #ifdef DEBUG

@@ -33,32 +33,6 @@ uint8_t writeSerialByte(char c)
     #endif
 }
 
-uint16_t readSerialUntil(char *buf, char delim, uint16_t size) {
-    {
-        uint8_t i = 0;
-        do {
-            while(!uartReady()) {}
-
-            #ifdef UCSRA
-                buf[i] = UDR;
-            #else
-                if (_port == 0) {
-                    while(!(UCSR0A&(1<<UDRE0))){};
-                    buf[i] = UDR0;
-                } else {
-                    while(!(UCSR1A&(1<<UDRE1))){};
-                    buf[i] = UDR1;
-                }
-            #endif
-
-            ++i;
-        } while (buf[i - 1] != delim && i < size);
-
-        buf[i - 1] = '\0';
-        return i;
-    }
-}
-
 uint8_t readByteSerial() {
     if (uartReady()) {
         #ifdef UCSRA
