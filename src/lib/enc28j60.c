@@ -2,10 +2,13 @@
 
 /*
  * SPI
+
  */
 
-uint8_t enc28j60_current_bank[2] = {0, 0};
-uint16_t enc28j60_rxrdpt[2] = {0, 0};
+ #define PORTS_NUM 4
+
+uint8_t enc28j60_current_bank[PORTS_NUM] = {0, 0, 0, 0};
+uint16_t enc28j60_rxrdpt[PORTS_NUM] = {0, 0, 0, 0};
 
 #define enc28j60_select(cs) ENC28J60_SPI_PORT &= ~(1<<cs)
 #define enc28j60_release(cs) ENC28J60_SPI_PORT |= (1<<cs)
