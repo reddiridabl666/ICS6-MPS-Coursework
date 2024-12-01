@@ -122,6 +122,7 @@ int main() {
         if (ping_timer >= REGULAR_PING_INTERVAL) {
             debug_log("regular ping\r\n");
             for (uint8_t i = 0; i < PORTS_NUM; ++i) {
+                delays[i] = 0;
                 ping_internal(i);
             }
             ping_timer = 0;
@@ -231,8 +232,6 @@ void init_uart() {
 }
 
 void init_timers() {
-    sei();
-
     #ifdef TIMSK
 	    TIMSK = (1<<TOIE1) | (1<<TOIE0);
     #else
@@ -250,6 +249,8 @@ void init_timers() {
     #endif
 	
 	TCCR1B = (1<<CS12);             // div 256
+
+    sei();
 }
 
 char* lcd_msg_pattern = "P%u %u b/s %u ms";
@@ -279,7 +280,7 @@ ISR (TIMER1_OVF_vect) {
 
     for (uint8_t i = 0; i < PORTS_NUM; ++i) {
         transmitted_data[i] = 0;
-        delays[i] = 0;
+        // delays[i] = 0;
     }
 
 #ifndef ECHO
@@ -287,7 +288,6 @@ ISR (TIMER1_OVF_vect) {
 #endif
 }
 
-#ifndef ECHO
 ISR (TIMER0_OVF_vect) {
     TCNT0 = T0_MILLISECOND;
 
@@ -359,7 +359,6 @@ void receive_and_send_to_others(uint8_t port_num) {
         }
     }
 }
-#endif
 
 typedef struct eth_frame {
     uint8_t to_addr[6];
