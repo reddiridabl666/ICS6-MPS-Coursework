@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "D:\\Program Files\\WinAVR\\avr\\include\\**",
+                "${workspaceFolder}/lib/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "F_CPU 16000000UL",
+                "__AVR_ATmega328P__"
+            ],
+            "compilerPath": "D:\\Program Files\\WinAVR\\bin\\avr-gcc.exe",
+            "cStandard": "c99",
+            "cppStandard": "gnu++11",
+            "intelliSenseMode": "${default}"
+        }
+    ],
+    "version": 4
+}
